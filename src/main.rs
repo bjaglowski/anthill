@@ -1,7 +1,16 @@
+use raylib::prelude::*;
+
 pub struct Config {
     pub max_x: i32,
     pub max_y: i32,
     pub iterations: i32,
+}
+
+pub enum Direction {
+    UP,
+    DOWN,
+    RIGHT,
+    LEFT
 }
 
 pub struct Board {
@@ -13,72 +22,35 @@ pub struct Board {
 pub struct Ant {
     x: i32,
     y: i32,
-    dir: i8,
+    dir: Direction,
     max_x: i32,
     max_y: i32,
 }
 
 impl Ant {
     fn new(x: i32, y: i32, max_x: i32, max_y: i32) -> Self {
-        Self { x, y, dir: 0, max_x, max_y }
+        Self { x, y, dir: Direction::UP, max_x, max_y }
     }
 
     fn move_ant(&mut self, dirty: bool) {
         if dirty {
-            // jeśli znajduje się na polu czarnym to obraca się w lewo (o kąt prosty), 
-            // zmienia kolor pola na biały i przechodzi na następną komórkę;
             match self.dir {
-                0 => {
-                    self.x -= 1;
-                    self.dir = 3;
-                }
-                1 => {
-                    self.y -= 1;
-                    self.dir = 0;
-                }
-                2 => {
-                    self.x += 1;
-                    self.dir = 1;
-                }
-                3 => {
-                    self.y += 1;
-                    self.dir = 2;
-                }
-                _ => {}
+                Direction::UP => { self.x -= 1; self.dir = Direction::LEFT; }
+                Direction::LEFT => { self.y -= 1; self.dir = Direction::DOWN; }
+                Direction::DOWN => { self.x += 1; self.dir = Direction::RIGHT; }
+                Direction::RIGHT => { self.y += 1; self.dir = Direction::UP; }
             }
         } else {
             match self.dir {
-                0 => {
-                    self.x += 1;
-                    self.dir = 1;
-                }
-                1 => {
-                    self.y += 1;
-                    self.dir = 2;
-                }
-                2 => {
-                    self.x -= 1;
-                    self.dir = 3;
-                }
-                3 => {
-                    self.y -= 1;
-                    self.dir = 0;
-                }
-                _ => {}
+                Direction::UP => { self.x += 1; self.dir = Direction::RIGHT; }
+                Direction::RIGHT => { self.y -= 1; self.dir = Direction::DOWN; }
+                Direction::DOWN => { self.x -= 1; self.dir = Direction::LEFT; }
+                Direction::LEFT => { self.y += 1; self.dir = Direction::UP; }
             }
         }
-        if self.x > self.max_x - 1 {
-            self.x = 0;
-        }
-        if self.x < 0 {
-            self.x = self.max_x - 1;
-        }
-        if self.y > self.max_y - 1 {
-            self.y = 0;
-        }
-        if self.y < 0 {
-            self.y = self.max_y - 1;
-        }
+
+        self.x = self.x.rem_euclid(self.max_x);
+        self.y = self.y.rem_euclid(self.max_y);
     }
 }
 
@@ -103,10 +75,11 @@ impl Board {
         self.data[index]
     }
 
-    fn draw(&self) {
+    fn draw(&self, d: &mut RaylibDrawHandle) {
         for i in 0..self.max_x {
             for j in 0..self.max_y {
-                at_xy(i as i32 * 2, j as i32, if self.get(i, j) { "██" } else { "░░" });
+                let color = if self.get(i, j) { Color::BLACK } else { Color::WHITE };
+                d.draw_rectangle(i as i32 * 10, j as i32 * 10, 10, 10, color);
             }
         }
     }
@@ -115,27 +88,36 @@ impl Board {
 fn main() {
     let cfg = setup();
 
-//     let (mut rl, thread) = raylib::init()
-//     .size(640, 480)
-//     .title("Hello, World")
-//     .build();
+    let (mut rl, thread) = init()
+        .size(800, 600)
+        .title("Langton's Ant")
+        .build();
 
-//     while !rl.window_should_close() {
-//         let mut d = rl.begin_drawing(&thread);
-
-//         d.clear_background(Color::WHITE);
-//         d.draw_text("Hello, world!", 12, 12, 20, Color::BLACK);
-// }
-
-    println!("rozmiar: {}x{}", cfg.max_x, cfg.max_y);
     let mut board = Board::new(cfg.max_x as usize, cfg.max_y as usize);
     let mut ant = Ant::new(cfg.max_x / 2, cfg.max_y / 2, cfg.max_x, cfg.max_y);
-    board.draw();
-    for _i in 0..cfg.iterations {
-        let index = ant.y * cfg.max_x + ant.x;
-        board.set(ant.x as usize, ant.y as usize, !board.get(ant.x as usize, ant.y as usize));
-        ant.move_ant(board.data[index as usize]);
-        at_xy(ant.x * 2, ant.y, if board.get(ant.x as usize, ant.y as usize) { "██" } else { "░░" });
+    let mut iteration = 0;
+    let mut simulation_running = true;
+
+    while !rl.window_should_close() {
+        if simulation_running {
+            let index = ant.y * cfg.max_x + ant.x;
+            board.set(ant.x as usize, ant.y as usize, !board.get(ant.x as usize, ant.y as usize));
+            ant.move_ant(board.data[index as usize]);
+            iteration += 1;
+            if iteration >= cfg.iterations {
+                simulation_running = false;
+            }
+        }
+
+        let mut d = rl.begin_drawing(&thread);
+        d.clear_background(Color::WHITE);
+        board.draw(&mut d);
+        d.draw_rectangle(ant.x * 10, ant.y * 10, 10, 10, Color::RED);
+        d.draw_text(&format!("Iteration: {}", iteration), 10, 10, 20, Color::BLACK);
+
+        if !simulation_running {
+            d.draw_text("Simulation Paused", 10, 40, 20, Color::RED);
+        }
     }
 }
 
@@ -143,9 +125,9 @@ fn setup() -> Config {
     let rows = std::env::var("LINES");
     let cols = std::env::var("COLUMNS");
     let iter = std::env::var("ITERATIONS");
-    let mut r = rows.unwrap_or("25".to_string()).parse().unwrap_or(25);
+    let mut r = rows.unwrap_or("60".to_string()).parse().unwrap_or(60);
     let mut c = cols.unwrap_or("80".to_string()).parse().unwrap_or(80);
-    let mut i = iter.unwrap_or("100000".to_string()).parse().unwrap_or(100000);
+    let mut i = iter.unwrap_or("1000".to_string()).parse().unwrap_or(1000);
 
     let args = std::env::args().collect::<Vec<String>>();
 
@@ -166,8 +148,4 @@ fn setup() -> Config {
         max_y: r,
         iterations: i,
     }
-}
-
-fn at_xy(x: i32, y: i32, text: &str) {
-    print!("\x1b[{};{}H{}", y + 1, x + 1, text);
 }
