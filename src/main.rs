@@ -17,6 +17,11 @@ pub enum Direction {
     Left,
 }
 
+pub struct Item {
+    x: i32,
+    y: i32,
+}
+
 pub struct Board {
     max_x: usize,
     max_y: usize,
@@ -29,6 +34,7 @@ pub struct Ant {
     dir: Direction,
     max_x: i32,
     max_y: i32,
+    item: Vec<Item>,
 }
 
 impl Direction {
@@ -56,9 +62,15 @@ impl Direction {
     }
 }
 
+impl Item {
+    fn new(x: i32, y: i32, ) -> Self {
+        Self { x, y}
+    }
+}
+
 impl Ant {
     fn new(x: i32, y: i32, max_x: i32, max_y: i32) -> Self {
-        Self { x, y, dir: Direction::UpLeft, max_x, max_y }
+        Self { x, y, dir: Direction::UpLeft, max_x, max_y, item: Vec::with_capacity(1)}
     }
 
     fn move_ant(&mut self, dirty: bool) {
@@ -122,7 +134,7 @@ impl Board {
                 let center_x = (i as f32 * 3.0_f32.sqrt() * radius) + x_offset;
                 let center_y = (j as f32 * 3.0/2.0 * radius) + radius;
 
-                draw_hexagon(d, center_x, center_y, radius * 0.95, color);
+                draw_hexagon(d, center_x, center_y, radius * 0.95, Color::LIGHTGRAY);
             }
         }
     }
@@ -131,6 +143,7 @@ impl Board {
 fn draw_hexagon(d: &mut RaylibDrawHandle, x: f32, y: f32, radius: f32, color: Color) {
     let mut points = [Vector2::zero(); 6];
     for i in 0..6 {
+        // https://www.redblobgames.com/grids/hexagons/
         let angle = std::f32::consts::PI / 3.0 * (i as f32);
         points[i] = Vector2::new(x + radius * angle.cos(), y + radius * angle.sin());
     }
@@ -145,11 +158,16 @@ fn main() {
 
     let (mut rl, thread) = init()
         .size(window_size_x, window_size_y)
-        .title("Langton's Ant on Hexagonal Grid")
+        .title("Ants on Hexagonal Grid")
         .build();
 
     let mut board = Board::new(cfg.max_x as usize, cfg.max_y as usize);
-    let mut ant = Ant::new(cfg.max_x / 2, cfg.max_y / 2, cfg.max_x, cfg.max_y);
+
+    let mut ants: Vec<Ant> = Vec::with_capacity(5);
+    ants.push(Ant::new(cfg.max_x / 2, cfg.max_y / 2, cfg.max_x, cfg.max_y));
+    ants.push(Ant::new(cfg.max_x / 4, cfg.max_y / 4, cfg.max_x, cfg.max_y));
+    ants.push(Ant::new(cfg.max_x / 3, cfg.max_y / 3, cfg.max_x, cfg.max_y));
+
     let mut iteration = 0;
     let mut simulation_running = true;
     let radius_x = window_size_x as f32 / (cfg.max_x as f32 + 0.5) / 3.0_f32.sqrt();
@@ -160,8 +178,11 @@ fn main() {
 
     while !rl.window_should_close() {
         if simulation_running {
-            board.set(ant.x as usize, ant.y as usize, !board.get(ant.x as usize, ant.y as usize));
-            ant.move_ant(board.get(ant.x as usize, ant.y as usize));
+            for mut ant in &mut ants {
+                board.set(ant.x as usize, ant.y as usize, !board.get(ant.x as usize, ant.y as usize));
+                ant.move_ant(board.get(ant.x as usize, ant.y as usize));
+            }
+
             iteration += 1;
             if iteration >= cfg.iterations {
                 simulation_running = false;
@@ -175,10 +196,12 @@ fn main() {
         board.draw(&mut d, radius);
 
         // https://www.redblobgames.com/grids/hexagons/
-        let ant_x = (ant.x as f32 * 3.0_f32.sqrt() * radius) + if ant.y % 2 == 0 { radius } else { radius + 3.0_f32.sqrt() * radius / 2.0 };
-        let ant_y = (ant.y as f32 * 3.0/2.0 * radius) + radius;
+        for mut ant in &mut ants {
+            let ant_x = (ant.x as f32 * 3.0_f32.sqrt() * radius) + if ant.y % 2 == 0 { radius } else { radius + 3.0_f32.sqrt() * radius / 2.0 };
+            let ant_y = (ant.y as f32 * 3.0/2.0 * radius) + radius;
+            draw_hexagon(&mut d, ant_x, ant_y, radius, Color::RED);
+        }
 
-        draw_hexagon(&mut d, ant_x, ant_y, radius, Color::RED);
         d.draw_text(&format!("Iteration: {}", iteration), 10, 10, 20, Color::BLACK);
 
         if !simulation_running {
