@@ -1,5 +1,7 @@
 use raylib::prelude::*;
 use std::{thread, time};
+use rand::Rng;
+use rand::seq::SliceRandom;
 
 pub struct Config {
     pub max_x: i32,
@@ -8,6 +10,7 @@ pub struct Config {
     pub interval: i32,
 }
 
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Direction {
     UpLeft,
     UpRight,
@@ -17,28 +20,38 @@ pub enum Direction {
     Left,
 }
 
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum ItemType {
+    Lisc,
+    Kij,
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct Item {
     x: i32,
     y: i32,
+    freeze_time_left: i32,
+    item_type: ItemType,
 }
 
 pub struct Board {
     max_x: usize,
     max_y: usize,
-    data: Vec<bool>,
+    items: Vec<Item>,
+    ants: Vec<Ant>,
 }
 
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct Ant {
     x: i32,
     y: i32,
     dir: Direction,
     max_x: i32,
     max_y: i32,
-    item: Vec<Item>,
+    carrying_item: Option<Item>,
 }
 
 impl Direction {
-
     fn rotate_left(&self) -> Self {
         match self {
             Direction::UpLeft => Direction::Left,
@@ -63,18 +76,17 @@ impl Direction {
 }
 
 impl Item {
-    fn new(x: i32, y: i32, ) -> Self {
-        Self { x, y}
+    fn new(x: i32, y: i32, freeze_time_left: i32, item_type: ItemType) -> Self {
+        Self { x, y , freeze_time_left, item_type}
     }
 }
 
 impl Ant {
     fn new(x: i32, y: i32, max_x: i32, max_y: i32) -> Self {
-        Self { x, y, dir: Direction::UpLeft, max_x, max_y, item: Vec::with_capacity(1)}
+        Self { x, y, dir: Direction::UpLeft, max_x, max_y, carrying_item: None }
     }
 
     fn move_ant(&mut self, dirty: bool) {
-
         if dirty {
             self.dir = self.dir.rotate_left();
         } else {
@@ -104,38 +116,134 @@ impl Ant {
         self.x = self.x.rem_euclid(self.max_x);
         self.y = self.y.rem_euclid(self.max_y);
     }
+
+    fn get_neighbors(&self) -> Vec<(i32, i32)>{
+        if self.y % 2 == 0 {
+            vec![
+                ((self.x - 1).rem_euclid(self.max_x), (self.y - 1).rem_euclid(self.max_y)),
+                (self.x, (self.y - 1).rem_euclid(self.max_y)),
+                ((self.x + 1).rem_euclid(self.max_x), self.y),
+                (self.x, (self.y + 1).rem_euclid(self.max_y)),
+                ((self.x - 1).rem_euclid(self.max_x), (self.y + 1).rem_euclid(self.max_y)),
+                ((self.x - 1).rem_euclid(self.max_x), self.y),
+            ]
+        } else {
+            vec![
+                (self.x, (self.y - 1).rem_euclid(self.max_y)),
+                ((self.x + 1).rem_euclid(self.max_x), (self.y - 1).rem_euclid(self.max_y)),
+                ((self.x + 1).rem_euclid(self.max_x), self.y),
+                ((self.x + 1).rem_euclid(self.max_x), (self.y + 1).rem_euclid(self.max_y)),
+                (self.x, (self.y + 1).rem_euclid(self.max_y)),
+                ((self.x - 1).rem_euclid(self.max_x), self.y),
+            ]
+        }
+    }
 }
 
 impl Board {
     fn new(x: usize, y: usize) -> Self {
-        let mut v: Vec<bool> = Vec::with_capacity(x * y);
-        for _ in 0..x * y {
-            v.push(false);
+        let items: Vec<Item> = Vec::with_capacity(x * y);
+        let ants: Vec<Ant> = Vec::with_capacity(x * y);
+        Self { max_x: x, max_y: y, items, ants }
+    }
+
+    fn calculate_center_x(&self, x: i32, y: i32, radius: f32) -> f32{
+        x as f32 * 3.0_f32.sqrt() * radius + if y % 2 == 0 { radius } else { radius + 3.0_f32.sqrt() * radius / 2.0 }
+    }
+
+    fn is_field_free(&self, x: i32, y: i32) -> bool{
+        if self.items.iter().any(|item| item.x == x && item.y == y) {
+            return false
         }
-        Self { max_x: x, max_y: y, data: v }
+        if self.ants.iter().any(|ant| ant.x == x && ant.y == y) {
+            return false
+        }
+        true
     }
 
-    fn set(&mut self, x: usize, y: usize, val: bool) {
-        let index = y * self.max_x + x;
-        self.data[index] = val;
+    fn calculate_center_y(&self, y: i32, radius: f32) -> f32{
+        y as f32 * 3.0/2.0 * radius + radius
     }
 
-    fn get(&self, x: usize, y: usize) -> bool {
-        let index = y * self.max_x + x;
-        self.data[index]
+    fn pick_or_leave(&mut self) {
+
+        for ant in &mut self.ants {
+            if let Some(carrying_item) = ant.carrying_item {
+                for (nx, ny) in ant.get_neighbors().into_iter() {
+                    let similar_items_nearby_count = self.items.iter().filter(|item| item.x == nx && item.y == ny && carrying_item.item_type == item.item_type).count();
+                    if similar_items_nearby_count > 0 {
+                        if let Some(_) = self.items.iter().position(|item| item.x == ant.x && item.y == ant.y ) {
+                            continue
+                        } else {
+                            self.items.push(Item::new(ant.x, ant.y, similar_items_nearby_count as i32 * 2, carrying_item.item_type));
+                            ant.carrying_item = None;
+                        }
+                    }
+                }
+            } else {
+                if let Some(index) = self.items.iter().position(|item| item.x == ant.x && item.y == ant.y) {
+                    let mut item = self.items.remove(index);
+                    if item.freeze_time_left == 0 {
+                        ant.carrying_item = Some(item);
+                    } else {
+                        item.freeze_time_left = item.freeze_time_left - 1;
+                        self.items.push(item);
+                    }
+                }
+            }
+        }
     }
+    // fn move_ants(&mut self) {
+    //
+    //     let mut rng = rand::thread_rng();
+    //
+    //     for ant in &mut self.ants {
+    //
+    //         let num:i32 = rng.gen();
+    //
+    //         ant.move_ant(num % 2 == 0);
+    //         ant.move_ant(num % 2 == 0);
+    //         ant.move_ant(num % 2 == 0);
+    //         ant.move_ant(num % 2 == 0);
+    //
+    //
+    //         // let num:i32 = rng.gen();
+    //         // let (x, y) = ant.get_neighbors()[num as usize % 6 ];
+    //         // if self.is_field_free(x, y){
+    //         //     ant.x = x;
+    //         //     ant.y = y;
+    //         // }
+    //     }
+    // }
 
     fn draw(&self, d: &mut RaylibDrawHandle, radius: f32) {
         for j in 0..self.max_y {
             for i in 0..self.max_x {
                 // https://www.redblobgames.com/grids/hexagons/
                 let x_offset = if j % 2 == 0 { radius } else { radius + 3.0_f32.sqrt() * radius / 2.0 };
-                let color = if self.get(i, j) { Color::BLACK } else { Color::LIGHTGRAY };
                 let center_x = (i as f32 * 3.0_f32.sqrt() * radius) + x_offset;
                 let center_y = (j as f32 * 3.0/2.0 * radius) + radius;
 
                 draw_hexagon(d, center_x, center_y, radius * 0.95, Color::LIGHTGRAY);
             }
+        }
+
+        for item in &self.items {
+            let item_x = self.calculate_center_x(item.x, item.y, radius);
+            let item_y = self.calculate_center_y(item.y, radius);
+
+            let color = match item.item_type {
+                ItemType::Lisc => Color::BLUE,
+                ItemType::Kij => Color::YELLOW,
+            };
+
+            draw_hexagon(d, item_x, item_y, radius * 0.95, color);
+        }
+
+        for ant in &self.ants {
+            let ant_x = self.calculate_center_x(ant.x, ant.y, radius);
+            let ant_y = self.calculate_center_y(ant.y, radius);
+            draw_hexagon(d, ant_x, ant_y, radius * 0.95, Color::RED);
         }
     }
 }
@@ -155,6 +263,7 @@ fn main() {
 
     let window_size_x = 800;
     let window_size_y = 600;
+    let mut rng = rand::thread_rng();
 
     let (mut rl, thread) = init()
         .size(window_size_x, window_size_y)
@@ -163,24 +272,59 @@ fn main() {
 
     let mut board = Board::new(cfg.max_x as usize, cfg.max_y as usize);
 
-    let mut ants: Vec<Ant> = Vec::with_capacity(5);
-    ants.push(Ant::new(cfg.max_x / 2, cfg.max_y / 2, cfg.max_x, cfg.max_y));
-    ants.push(Ant::new(cfg.max_x / 4, cfg.max_y / 4, cfg.max_x, cfg.max_y));
-    ants.push(Ant::new(cfg.max_x / 3, cfg.max_y / 3, cfg.max_x, cfg.max_y));
+    for _ in 0..cfg.max_x*cfg.max_y/30 {
+        let rand_x = rng.gen_range(0..cfg.max_x);
+        let rand_y = rng.gen_range(0..cfg.max_y);
+        board.ants.push(Ant::new(rand_x, rand_y, cfg.max_x, cfg.max_y));
+    }
+
+    for iter in 0..cfg.max_x*cfg.max_y/10 {
+        let rand_x = rng.gen_range(0..cfg.max_x);
+        let rand_y = rng.gen_range(0..cfg.max_y);
+
+        let item_type = match iter % 2 {
+            0 => ItemType::Kij,
+            _ => ItemType::Lisc,
+        };
+
+        board.items.push(Item::new(rand_x, rand_y, 0, item_type));
+    }
 
     let mut iteration = 0;
     let mut simulation_running = true;
     let radius_x = window_size_x as f32 / (cfg.max_x as f32 + 0.5) / 3.0_f32.sqrt();
     let radius_y = window_size_y as f32 / (cfg.max_y as f32 + 0.5) / (3.0/2.0);
     let millis_interval = time::Duration::from_millis(cfg.interval as u64);
-
-    let radius = if radius_x > radius_y {radius_y} else {radius_x};
+    let radius = if radius_x > radius_y { radius_y } else { radius_x };
 
     while !rl.window_should_close() {
         if simulation_running {
-            for mut ant in &mut ants {
-                board.set(ant.x as usize, ant.y as usize, !board.get(ant.x as usize, ant.y as usize));
-                ant.move_ant(board.get(ant.x as usize, ant.y as usize));
+            board.pick_or_leave();
+            for ant in &mut board.ants {
+
+                for _ in 0..5 {
+                    let mut neigbors = ant.get_neighbors().into_iter().collect::<Vec<_>>();
+                    neigbors.shuffle(&mut rng);
+
+
+                    for (nx, ny) in neigbors {
+                        if let Some(item) = &ant.carrying_item {
+                            if board.items.iter().any(|item| item.x == nx && item.y == ny) {
+                                continue
+                            } else {
+                                ant.x = nx;
+                                ant.y = ny;
+                                break
+                            }
+
+                        } else {
+                            ant.x = nx;
+                            ant.y = ny;
+                            break
+                        }
+                    }
+                }
+
             }
 
             iteration += 1;
@@ -195,13 +339,6 @@ fn main() {
         d.clear_background(Color::WHITE);
         board.draw(&mut d, radius);
 
-        // https://www.redblobgames.com/grids/hexagons/
-        for mut ant in &mut ants {
-            let ant_x = (ant.x as f32 * 3.0_f32.sqrt() * radius) + if ant.y % 2 == 0 { radius } else { radius + 3.0_f32.sqrt() * radius / 2.0 };
-            let ant_y = (ant.y as f32 * 3.0/2.0 * radius) + radius;
-            draw_hexagon(&mut d, ant_x, ant_y, radius, Color::RED);
-        }
-
         d.draw_text(&format!("Iteration: {}", iteration), 10, 10, 20, Color::BLACK);
 
         if !simulation_running {
@@ -213,12 +350,12 @@ fn main() {
 fn setup() -> Config {
     let rows = std::env::var("LINES");
     let cols = std::env::var("COLUMNS");
-    let iter = std::env::var("ITERATIONS");
-    let itvl = std::env::var("INTERVAL");
+    let iter = std::env::var("ANTS");
+    let interval = std::env::var("INTERVAL");
     let mut r = rows.unwrap_or("20".to_string()).parse().unwrap_or(20);
     let mut c = cols.unwrap_or("20".to_string()).parse().unwrap_or(20);
     let mut i = iter.unwrap_or("1000".to_string()).parse().unwrap_or(1000);
-    let mut t = itvl.unwrap_or("0".to_string()).parse().unwrap_or(0);
+    let mut t = interval.unwrap_or("0".to_string()).parse().unwrap_or(0);
 
     let args = std::env::args().collect::<Vec<String>>();
 
