@@ -1,5 +1,6 @@
 use raylib::prelude::*;
 use std::{thread, time};
+use rand::prelude::ThreadRng;
 use rand::Rng;
 use rand::seq::SliceRandom;
 
@@ -51,6 +52,7 @@ impl Ant {
     }
 
     fn get_neighbors(&self) -> Vec<(usize, usize)> {
+        // get neighboring fields
         let x: i32 = self.x as i32;
         let y: i32 = self.y as i32;
         let max_x: i32 = self.max_x as i32;
@@ -98,14 +100,20 @@ impl Board {
 
     fn pick_or_leave(&mut self) {
         for ant in &mut self.ants {
+
+            // is ant carrying something?
             if let Some(carrying_item) = ant.carrying_item {
-                if let Some(_) = self.items.iter().position(|item| item.x == ant.x && item.y == ant.y) {
-                    continue;
-                }
+                // if let Some(_) = self.items.iter().position(|item| item.x == ant.x && item.y == ant.y) {
+                //     continue;
+                // }
+
+                // check if some similar items are nearby
                 for (nx, ny) in ant.get_neighbors().into_iter() {
                     let similar_items_nearby_count = self.items.iter().filter(|item| item.x == nx && item.y == ny && carrying_item.item_type == item.item_type).count();
 
                     if similar_items_nearby_count > 0 {
+
+                        // attach the item harder if more elements there are nearby
                         let freeze_time_left = 2_u32.pow(similar_items_nearby_count as u32) as usize;
                         self.items.push(Item::new(ant.x, ant.y, freeze_time_left, carrying_item.item_type));
                         ant.carrying_item = None;
@@ -113,11 +121,17 @@ impl Board {
                     }
                 }
             } else {
+
+                // is ant staying on some item?
                 if let Some(index) = self.items.iter().position(|item| item.x == ant.x && item.y == ant.y) {
                     let mut item = self.items.remove(index);
+
+
                     if item.freeze_time_left == 0 {
+                        // the item's attach is sufficiently weakened to pick
                         ant.carrying_item = Some(item);
                     } else {
+                        // the item is attached too hard to pick, bite it
                         item.freeze_time_left = item.freeze_time_left - 1;
                         self.items.push(item);
                     }
@@ -127,6 +141,8 @@ impl Board {
     }
 
     fn draw(&self, d: &mut RaylibDrawHandle, radius: f32) {
+
+        // draw fields
         for y in 0..self.max_y {
             for x in 0..self.max_x {
                 let center_x = self.calculate_center_x(x, y, radius);
@@ -136,6 +152,7 @@ impl Board {
             }
         }
 
+        // draw items
         for item in &self.items {
             let item_x = self.calculate_center_x(item.x, item.y, radius);
             let item_y = self.calculate_center_y(item.y, radius);
@@ -148,11 +165,17 @@ impl Board {
             draw_hexagon(d, item_x, item_y, radius * 0.95, color);
         }
 
+        // draw ants
         for ant in &self.ants {
             let ant_x = self.calculate_center_x(ant.x, ant.y, radius);
             let ant_y = self.calculate_center_y(ant.y, radius);
 
-            draw_hexagon(d, ant_x, ant_y, radius * 0.95, Color::RED);
+            let mut color = Color::RED;
+            if let Some(_) = &ant.carrying_item {
+                color = Color::ORANGE; // orange ants are carrying some items
+            }
+
+            draw_hexagon(d, ant_x, ant_y, radius * 0.95, color);
         }
     }
 }
@@ -181,6 +204,7 @@ fn main() {
 
     let mut board = Board::new(cfg.max_x, cfg.max_y);
 
+    // add ants randomly
     for _ in 0..cfg.max_x * cfg.max_y / 30 {
         let rand_x = rng.gen_range(0..cfg.max_x);
         let rand_y = rng.gen_range(0..cfg.max_y);
@@ -188,6 +212,7 @@ fn main() {
         board.ants.push(Ant::new(rand_x, rand_y, cfg.max_x, cfg.max_y));
     }
 
+    // add items randomly
     for iter in 0..cfg.max_x * cfg.max_y / 5 {
         let rand_x = rng.gen_range(0..cfg.max_x);
         let rand_y = rng.gen_range(0..cfg.max_y);
@@ -210,29 +235,7 @@ fn main() {
     while !rl.window_should_close() {
         if simulation_running {
             board.pick_or_leave();
-            for ant in &mut board.ants {
-                for _ in 0..5 {
-                    let mut neigbors = ant.get_neighbors().into_iter().collect::<Vec<_>>();
-                    neigbors.shuffle(&mut rng);
-
-
-                    for (nx, ny) in neigbors {
-                        if let Some(_) = &ant.carrying_item {
-                            if board.items.iter().any(|item| item.x == nx && item.y == ny) {
-                                continue;
-                            } else {
-                                ant.x = nx;
-                                ant.y = ny;
-                                break;
-                            }
-                        } else {
-                            ant.x = nx;
-                            ant.y = ny;
-                            break;
-                        }
-                    }
-                }
-            }
+            move_ant(&mut board, &mut rng);
 
             iteration += 1;
             if iteration >= cfg.iterations {
@@ -251,6 +254,29 @@ fn main() {
         if !simulation_running {
             d.draw_text("Simulation paused", 10, 40, 20, Color::RED);
             thread::sleep(time::Duration::from_secs(1));
+        }
+    }
+}
+
+fn move_ant(board: &mut Board, mut rng: &mut ThreadRng) {
+    for ant in &mut board.ants {
+        // move ant by 5 fields randomly
+        for _ in 0..5 {
+            let mut neigbors = ant.get_neighbors().into_iter().collect::<Vec<_>>();
+            neigbors.shuffle(&mut rng);
+
+
+            for (nx, ny) in neigbors {
+                // block move if ant which is carrying an item is trying to step on another item
+                if let Some(_) = &ant.carrying_item {
+                    if board.items.iter().any(|item| item.x == nx && item.y == ny) {
+                        continue;
+                    }
+                }
+                ant.x = nx;
+                ant.y = ny;
+                break;
+            }
         }
     }
 }
