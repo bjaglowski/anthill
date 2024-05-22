@@ -4,6 +4,9 @@ Program symuluje kolonie mrówek. Mrówki przemieszczają się w losowym kierunk
 
 Program wykorzystuje bibliotekę Raylib w celu wizualizacji mrowiska.
 
+![image](https://github.com/bjaglowski/anthill/assets/89010497/0b3cf705-a620-4de8-97d2-db3db6627fa8)
+
+
 ## Uruchomienie
 ```shell
 cargo run
