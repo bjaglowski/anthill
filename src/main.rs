@@ -35,8 +35,6 @@ pub struct Board {
 pub struct Ant { // red
     x: usize,
     y: usize,
-    max_x: usize,
-    max_y: usize,
     carrying_item: Option<Item>,
 }
 
@@ -47,35 +45,33 @@ impl Item {
 }
 
 impl Ant {
-    fn new(x: usize, y: usize, max_x: usize, max_y: usize) -> Self {
-        Self { x, y, max_x, max_y, carrying_item: None }
+    fn new(x: usize, y: usize) -> Self {
+        Self { x, y, carrying_item: None }
     }
 
-    fn get_neighbors(&self) -> Vec<(usize, usize)> {
+    fn get_neighbors(&self, max_x: usize, max_y: usize) -> Vec<(usize, usize)> {
         // get neighboring fields
         let x: i32 = self.x as i32;
         let y: i32 = self.y as i32;
-        let max_x: i32 = self.max_x as i32;
-        let max_y: i32 = self.max_y as i32;
 
 
         if self.y % 2 == 0 {
             vec![
-                ((x - 1).rem_euclid(max_x) as usize, (y - 1).rem_euclid(max_y) as usize),
-                (self.x, (y - 1).rem_euclid(max_y) as usize),
-                ((self.x + 1).rem_euclid(self.max_x), self.y),
-                (self.x, (self.y + 1).rem_euclid(self.max_y)),
-                ((x - 1).rem_euclid(max_x) as usize, (self.y + 1).rem_euclid(self.max_y)),
-                ((x - 1).rem_euclid(max_x) as usize, self.y),
+                ((x - 1).rem_euclid(max_x as i32) as usize, (y - 1).rem_euclid(max_y as i32) as usize),
+                (self.x, (y - 1).rem_euclid(max_y as i32) as usize),
+                ((self.x + 1).rem_euclid(max_x), self.y),
+                (self.x, (self.y + 1).rem_euclid(max_y)),
+                ((x - 1).rem_euclid(max_x as i32) as usize, (self.y + 1).rem_euclid(max_y)),
+                ((x - 1).rem_euclid(max_x as i32) as usize, self.y),
             ]
         } else {
             vec![
-                (self.x, (self.y - 1).rem_euclid(self.max_y)),
-                ((self.x + 1).rem_euclid(self.max_x), (y - 1).rem_euclid(max_y) as usize),
-                ((self.x + 1).rem_euclid(self.max_x), self.y),
-                ((self.x + 1).rem_euclid(self.max_x), (self.y + 1).rem_euclid(self.max_y)),
-                (self.x, (self.y + 1).rem_euclid(self.max_y)),
-                ((x - 1).rem_euclid(max_x) as usize, self.y),
+                (self.x, (self.y - 1).rem_euclid(max_y)),
+                ((self.x + 1).rem_euclid(max_x), (y - 1).rem_euclid(max_y as i32) as usize),
+                ((self.x + 1).rem_euclid(max_x), self.y),
+                ((self.x + 1).rem_euclid(max_x), (self.y + 1).rem_euclid(max_y)),
+                (self.x, (self.y + 1).rem_euclid(max_y)),
+                ((x - 1).rem_euclid(max_x as i32) as usize, self.y),
             ]
         }
     }
@@ -108,7 +104,7 @@ impl Board {
                 // }
 
                 // check if some similar items are nearby
-                for (nx, ny) in ant.get_neighbors().into_iter() {
+                for (nx, ny) in ant.get_neighbors(self.max_x, self.max_y).into_iter() {
                     let similar_items_nearby_count = self.items.iter().filter(|item| item.x == nx && item.y == ny && carrying_item.item_type == item.item_type).count();
 
                     if similar_items_nearby_count > 0 {
@@ -194,7 +190,7 @@ fn main() {
     let cfg = setup();
 
     let window_size_x = 800;
-    let window_size_y = 600;
+    let window_size_y = (window_size_x as f32 * 0.875) as i32;
     let mut rng = rand::thread_rng();
 
     let (mut rl, thread) = init()
@@ -209,7 +205,7 @@ fn main() {
         let rand_x = rng.gen_range(0..cfg.max_x);
         let rand_y = rng.gen_range(0..cfg.max_y);
 
-        board.ants.push(Ant::new(rand_x, rand_y, cfg.max_x, cfg.max_y));
+        board.ants.push(Ant::new(rand_x, rand_y));
     }
 
     // add items randomly
@@ -262,7 +258,7 @@ fn move_ant(board: &mut Board, mut rng: &mut ThreadRng) {
     for ant in &mut board.ants {
         // move ant by 5 fields randomly
         for _ in 0..5 {
-            let mut neighbors = ant.get_neighbors().into_iter().collect::<Vec<_>>();
+            let mut neighbors = ant.get_neighbors(board.max_x, board.max_y).into_iter().collect::<Vec<_>>();
             neighbors.shuffle(&mut rng);
 
 
