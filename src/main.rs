@@ -13,8 +13,8 @@ pub struct Config {
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum ItemType {
-    Lisc, // blue
-    Kij, // yellow
+    Leaf, // blue
+    Stick, // yellow
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -158,8 +158,8 @@ impl Board {
             let item_y = self.calculate_center_y(item.y, radius);
 
             let color = match item.item_type {
-                ItemType::Lisc => Color::BLUE,
-                ItemType::Kij => Color::YELLOW,
+                ItemType::Leaf => Color::BLUE,
+                ItemType::Stick => Color::YELLOW,
             };
 
             draw_hexagon(d, item_x, item_y, radius * 0.95, color);
@@ -218,8 +218,8 @@ fn main() {
         let rand_y = rng.gen_range(0..cfg.max_y);
 
         let item_type = match iter % 2 {
-            0 => ItemType::Kij,
-            _ => ItemType::Lisc,
+            0 => ItemType::Stick,
+            _ => ItemType::Leaf,
         };
 
         board.items.push(Item::new(rand_x, rand_y, 0, item_type));
@@ -262,11 +262,11 @@ fn move_ant(board: &mut Board, mut rng: &mut ThreadRng) {
     for ant in &mut board.ants {
         // move ant by 5 fields randomly
         for _ in 0..5 {
-            let mut neigbors = ant.get_neighbors().into_iter().collect::<Vec<_>>();
-            neigbors.shuffle(&mut rng);
+            let mut neighbors = ant.get_neighbors().into_iter().collect::<Vec<_>>();
+            neighbors.shuffle(&mut rng);
 
 
-            for (nx, ny) in neigbors {
+            for (nx, ny) in neighbors {
                 // block move if ant which is carrying an item is trying to step on another item
                 if let Some(_) = &ant.carrying_item {
                     if board.items.iter().any(|item| item.x == nx && item.y == ny) {
