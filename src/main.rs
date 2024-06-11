@@ -99,9 +99,6 @@ impl Board {
 
             // is ant carrying something?
             if let Some(carrying_item) = ant.carrying_item {
-                // if let Some(_) = self.items.iter().position(|item| item.x == ant.x && item.y == ant.y) {
-                //     continue;
-                // }
 
                 // check if some similar items are nearby
                 for (nx, ny) in ant.get_neighbors(self.max_x, self.max_y).into_iter() {
@@ -121,7 +118,6 @@ impl Board {
                 // is ant staying on some item?
                 if let Some(index) = self.items.iter().position(|item| item.x == ant.x && item.y == ant.y) {
                     let mut item = self.items.remove(index);
-
 
                     if item.freeze_time_left == 0 {
                         // the item's attach is sufficiently weakened to pick
@@ -177,12 +173,6 @@ impl Board {
 }
 
 fn draw_hexagon(d: &mut RaylibDrawHandle, x: f32, y: f32, radius: f32, color: Color) {
-    let mut points = [Vector2::zero(); 6];
-    for i in 0..6 {
-        // https://www.redblobgames.com/grids/hexagons/
-        let angle = std::f32::consts::PI / 3.0 * (i as f32);
-        points[i] = Vector2::new(x + radius * angle.cos(), y + radius * angle.sin());
-    }
     d.draw_poly(Vector2::new(x, y), 6, radius, 0.0, color);
 }
 
